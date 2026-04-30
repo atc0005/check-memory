@@ -13,4 +13,8 @@ var (
 	// ErrAvailableMemoryBelowThreshold indicates that evaluated memory is
 	// below a given set of thresholds.
 	ErrAvailableMemoryBelowThreshold = errors.New("available memory below specified threshold")
+
+	// ErrFieldUnavailable indicates that a specified field was not found in
+	// the specified input.
+	ErrFieldUnavailable = errors.New("field not found")
 )
