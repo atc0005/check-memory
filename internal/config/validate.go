@@ -34,21 +34,24 @@ func (c Config) validate(appType AppType) error {
 	case appType.Plugin:
 		if c.WarningThreshold <= 0 || c.WarningThreshold > 100 {
 			return fmt.Errorf(
-				"invalid memory available percentage WARNING threshold number: %d",
+				"%w: invalid memory available percentage WARNING threshold number: %d",
+				ErrUnsupportedOption,
 				c.WarningThreshold,
 			)
 		}
 
 		if c.CriticalThreshold <= 0 || c.CriticalThreshold > 100 {
 			return fmt.Errorf(
-				"invalid memory available percentage CRITICAL threshold number: %d",
+				"%w: invalid memory available percentage CRITICAL threshold number: %d",
+				ErrUnsupportedOption,
 				c.CriticalThreshold,
 			)
 		}
 
 		if c.CriticalThreshold >= c.WarningThreshold {
 			return fmt.Errorf(
-				"critical threshold set higher than or equal to warning threshold",
+				"%w: critical threshold set higher than or equal to warning threshold",
+				ErrUnsupportedOption,
 			)
 		}
 	}

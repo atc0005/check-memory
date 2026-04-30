@@ -143,12 +143,20 @@ func (mi MemInfo) ServiceState() nagios.ServiceState {
 
 // GetMemInfo returns a collection of memory statistics.
 func GetMemInfo(criticalThreshold int, warningThreshold int) (MemInfo, error) {
-	memAvailableVal, err := getMemAvailableFieldVal()
+	memInfoFile := filepath.Join(ProcRootDir, ProcMemFilename)
+
+	// Read the content of /proc/meminfo
+	content, err := os.ReadFile(filepath.Clean(memInfoFile))
+	if err != nil {
+		return MemInfo{}, fmt.Errorf("failed to read memory statistics file %s: %w", memInfoFile, err)
+	}
+
+	memAvailableVal, err := getMemInfoFieldVal(content, ProcMemAvailableFieldName, memInfoFile)
 	if err != nil {
 		return MemInfo{}, err
 	}
 
-	memTotalVal, err := getMemTotalFieldVal()
+	memTotalVal, err := getMemInfoFieldVal(content, ProcMemTotalFieldName, memInfoFile)
 	if err != nil {
 		return MemInfo{}, err
 	}
@@ -169,78 +177,47 @@ func GetMemInfo(criticalThreshold int, warningThreshold int) (MemInfo, error) {
 	}, nil
 }
 
-// getMemAvailableFieldVal returns the memory available in KB from the
-// MemAvailable field within the /proc/meminfo file.
-func getMemAvailableFieldVal() (int64, error) {
-	memInfoFile := filepath.Join(ProcRootDir, ProcMemFilename)
-
-	// Read the content of /proc/meminfo
-	content, err := os.ReadFile(filepath.Clean(memInfoFile))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read memory statistics file %s: %w", memInfoFile, err)
-	}
-
-	var memAvailableKB int64
-	var found bool
+// getMemInfoFieldVal returns the value available in KB from the specified
+// field within the /proc/meminfo file (provided as a byte slice).
+func getMemInfoFieldVal(content []byte, fieldname string, filename string) (int64, error) {
+	var err error
+	var memFieldValInKB int64
 
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
-		if strings.HasPrefix(line, ProcMemAvailableFieldName+":") {
-			// Split the line into fields (e.g., "MemAvailable:", "10021900", "kB")
-			fields := strings.Fields(line)
-			if len(fields) >= 3 {
-				// The second field is the value in kilobytes
-				found = true
-				memAvailableKB, err = strconv.ParseInt(fields[1], 10, 64)
-				if err != nil {
-					return 0, fmt.Errorf("failed to parse %s field: %w", ProcMemAvailableFieldName, err)
-				}
-				break // Found the value, exit the loop
+		if strings.HasPrefix(line, fieldname+":") {
+			memFieldValInKB, err = extractMemInfoField(line, fieldname)
+			if err == nil {
+				return memFieldValInKB, nil
 			}
+
+			break // error encountered, halt field extraction attempt
 		}
 	}
 
-	if !found {
-		return 0, fmt.Errorf("failed to find %s field in memory statistics file %s: %w", ProcMemTotalFieldName, memInfoFile, err)
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve field value %s from %s: %w", fieldname, filename, err)
 	}
 
-	return memAvailableKB, nil
+	return memFieldValInKB, nil
 }
 
-func getMemTotalFieldVal() (int64, error) {
-	memInfoFile := filepath.Join(ProcRootDir, ProcMemFilename)
-
-	// Read the content of /proc/meminfo
-	content, err := os.ReadFile(filepath.Clean(memInfoFile))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read memory statistics file %s: %w", memInfoFile, err)
-	}
-
-	var memTotalKB int64
-	var found bool
-
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, ProcMemTotalFieldName+":") {
-			// Split the line into fields (e.g., "MemTotal:", "14073456", "kB")
-			fields := strings.Fields(line)
-			if len(fields) >= 3 {
-				// The second field is the value in kilobytes
-				found = true
-				memTotalKB, err = strconv.ParseInt(fields[1], 10, 64)
-				if err != nil {
-					return 0, fmt.Errorf("failed to parse %s field: %w", ProcMemTotalFieldName, err)
-				}
-				break // Found the value, exit the loop
-			}
+func extractMemInfoField(line string, fieldname string) (int64, error) {
+	// Split the line into fields
+	// (e.g., "MemTotal:", "14073456", "kB")
+	// (e.g., "MemAvailable:", "10021900", "kB")
+	fields := strings.Fields(line)
+	if len(fields) >= 3 {
+		// The second field is the value in kilobytes
+		memTotalKB, err := strconv.ParseInt(fields[1], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse %s field: %w", fieldname, err)
 		}
+
+		return memTotalKB, nil
 	}
 
-	if !found {
-		return 0, fmt.Errorf("failed to find %s field in memory statistics file %s: %w", ProcMemTotalFieldName, memInfoFile, err)
-	}
-
-	return memTotalKB, nil
+	return 0, fmt.Errorf("unable to extract value for %s field: %w", fieldname, ErrFieldUnavailable)
 }
 
 // FallbackMemAvailableCalculation performs a calculation that provides an
